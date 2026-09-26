@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Comptine IA v3 — Ferme · Petit Renard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --bg: #fff8ec; --panel: #ffffff; --border: #f0e2cc;
+    --ink: #2b1d0e; --ink-dim: #8a7a63;
+    --success: #2d8a4e; --error: #c0392b; --warn: #d4a017;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg); color: var(--ink); min-height: 100vh;
+    padding: 1.2rem 1rem 4rem; font-size: 15px; line-height: 1.5;
+    max-width: 700px; margin: 0 auto;
+  }
+  header { text-align: center; margin-bottom: 1.2rem; }
+  h1 { font-size: 1.3rem; font-weight: 700; margin-bottom: 0.2rem; }
+  .subtitle { font-size: 0.82rem; color: var(--ink-dim); font-style: italic; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1rem 1.1rem; margin-bottom: 1rem;
+  }
+  .card h2 {
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-dim); font-weight: 700; margin-bottom: 0.6rem;
+  }
+
+  input[type="text"] {
+    width: 100%; padding: 0.85rem 1rem; border-radius: 8px;
+    border: 1px solid var(--border); background: #fafafa;
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem;
+    color: var(--ink); margin-bottom: 0.6rem;
+  }
+  input:focus { outline: none; border-color: var(--ink); }
+
+  button {
+    font-family: inherit; font-size: 0.95rem; font-weight: 600;
+    padding: 0.85rem 1.2rem; border-radius: 10px;
+    border: none; background: var(--ink); color: #fff;
+    cursor: pointer; transition: transform 0.1s, opacity 0.2s;
+    width: 100%;
+  }
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button.secondary {
+    background: transparent; color: var(--ink);
+    border: 2px solid var(--ink); margin-top: 0.5rem;
+  }
+
+  .api-status {
+    font-size: 0.75rem; padding: 0.55rem 0.8rem;
+    border-radius: 6px; margin-top: 0.5rem;
+    background: #f5f5f5; color: var(--ink-dim);
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .api-status.ok { background: #e3f5e9; color: var(--success); font-weight: 600; }
+  .api-status .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+  .wake-status {
+    font-size: 0.75rem; padding: 0.5rem 0.8rem; border-radius: 6px;
+    margin-top: 0.5rem; display: flex; justify-content: space-between;
+    align-items: center; background: #eef4ff; color: #2a3a5c; gap: 0.4rem;
+  }
+  .wake-status.active { background: #e3f5e9; color: var(--success); }
+  .wake-status button {
+    background: transparent; border: 1px solid currentColor;
+    color: inherit; padding: 0.25rem 0.6rem; border-radius: 6px;
+    font-size: 0.68rem; width: auto;
+  }
+
+  .preview-info {
+    display: flex; gap: 0.5rem; flex-wrap: wrap;
+    font-size: 0.82rem; margin-bottom: 0.6rem;
+  }
+  .preview-info span {
+    background: var(--bg); padding: 0.35rem 0.7rem;
+    border-radius: 16px; border: 1px solid var(--border);
+  }
+
+  .log-box {
+    background: #1a1a1a; color: #d4d4d4; border-radius: 8px;
+    padding: 0.7rem 0.9rem; font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.7rem; line-height: 1.4; max-height: 200px;
+    overflow-y: auto; margin-top: 0.8rem; display: none;
+  }
+  .log-box.visible { display: block; }
+  .log-box .log-line { margin-bottom: 0.2rem; }
+  .log-box .log-line.ok { color: #4ade80; }
+  .log-box .log-line.err { color: #f87171; }
+  .log-box .log-line.warn { color: #fbbf24; }
+
+  .queue-item {
+    display: flex; align-items: center; gap: 0.7rem;
+    padding: 0.7rem 0.9rem; border-radius: 8px;
+    border: 1px solid var(--border); margin-bottom: 0.4rem;
+    background: var(--panel); font-size: 0.85rem;
+  }
+  .queue-item.done { border-color: var(--success); }
+  .queue-item.failed { border-color: var(--error); }
+  .queue-item.creating, .queue-item.processing { border-color: var(--warn); }
+  .q-icon { font-size: 1rem; width: 1.6rem; text-align: center; }
+  .q-name { flex: 1; font-weight: 600; }
+  .q-status { font-size: 0.75rem; color: var(--ink-dim); }
+
+  .gallery { margin-top: 1.5rem; }
+  .gallery-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.7rem;
+  }
+  .gallery-item {
+    border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--border); background: #000;
+  }
+  .gallery-item video { width: 100%; display: block; aspect-ratio: 9/16; object-fit: cover; }
+  .gallery-item .g-caption {
+    padding: 0.4rem 0.6rem; background: var(--panel);
+    font-size: 0.72rem; color: var(--ink-dim);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .gallery-item .g-caption a { color: var(--ink); text-decoration: underline; font-size: 0.72rem; }
+
+  .status-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--ink); color: #fff; padding: 0.7rem 1rem;
+    font-size: 0.78rem; display: flex; align-items: center; gap: 0.6rem;
+    transform: translateY(100%); transition: transform 0.3s;
+    z-index: 100;
+  }
+  .status-bar.visible { transform: translateY(0); }
+  .spinner {
+    width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.8s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .toast {
+    position: fixed; top: 1.2rem; left: 50%;
+    transform: translateX(-50%) translateY(-100px);
+    background: var(--ink); color: #fff;
+    padding: 0.8rem 1.3rem; border-radius: 10px;
+    font-size: 0.85rem; font-weight: 500;
+    z-index: 1000; opacity: 0;
+    transition: transform 0.35s ease, opacity 0.35s ease;
+    max-width: 90vw; text-align: center;
+  }
+  .toast.visible { transform: translateX(-50%) translateY(0); opacity: 1; }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--error); }
+  .toast.warn { background: var(--warn); }
+
+  #noSleepVideo {
+    position: fixed; top: 0; left: 0;
+    width: 1px; height: 1px; opacity: 0.01;
+    pointer-events: none; z-index: -1;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🦊 Comptine IA — v3</h1>
+  <p class="subtitle">Test du chiffre 1 · sauvegarde automatique</p>
+</header>
+
+<div class="card">
+  <h2>🔑 Clé API Agnes</h2>
+  <input type="text" id="api-key-input" placeholder="Collez votre clé API ici (sk-...)" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <button id="api-save-btn" type="button">Enregistrer la clé</button>
+  <div class="api-status" id="api-status">
+    <span class="dot"></span>
+    <span id="api-status-text">Aucune clé enregistrée</span>
+  </div>
+  <div class="wake-status" id="wake-status">
+    <span id="wake-status-text">💤 Veille automatique</span>
+    <button id="wake-toggle-btn" type="button">Garder l'écran allumé</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🎬 Test</h2>
+  <div class="preview-info">
+    <span>🐄 Ferme</span>
+    <span>🦊 Petit renard</span>
+    <span>🧒 Voix enfant</span>
+    <span>📱 9:16</span>
+  </div>
+  <button id="test-one-btn" type="button" disabled>▶ Tester le chiffre 1</button>
+  <button id="generate-btn" type="button" class="secondary" disabled>Générer 1 à 5</button>
+  <button id="stop-btn" type="button" class="secondary" style="display:none;">⏹ Arrêter</button>
+  <button id="show-log-btn" type="button" class="secondary">📋 Afficher les logs</button>
+  <div class="log-box" id="log-box"></div>
+</div>
+
+<div class="card" id="queue-card" style="display:none;">
+  <h2>📋 File d'attente</h2>
+  <div id="queue"></div>
+</div>
+
+<div class="gallery" id="gallery" style="display:none;">
+  <h2 style="font-size:0.9rem; margin-bottom:0.6rem;">🎥 Vidéos générées</h2>
+  <div class="gallery-grid" id="gallery-grid"></div>
+  <button id="clear-gallery-btn" type="button" class="secondary" style="margin-top:0.8rem;">🗑 Effacer la galerie</button>
+</div>
+
+<div class="status-bar" id="status-bar">
+  <div class="spinner"></div>
+  <span id="status-text">Préparation…</span>
+</div>
+
+<div class="toast" id="toast">
+  <span id="toast-text">Message</span>
+</div>
+
+<video id="noSleepVideo" playsinline muted loop></video>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+// CONFIGURATION
+// ══════════════════════════════════════════════════════════════════
+var API_BASE = 'https://apihub.agnes-ai.com/v1';
+var POLL_BASE = 'https://apihub.agnes-ai.com/agnesapi';
+var MODEL_VIDEO = 'agnes-video-v2.0';
+var FRAME_RATE = 24;
+var STORAGE_KEY = 'comptine_ia_v3_key';
+var GALLERY_KEY = 'comptine_ia_v3_gallery';
+var WAKE_PREF_KEY = 'comptine_ia_v3_wake';
+
+var CREATE_INTERVAL_MS = 62000;
+var POLL_INTERVAL_SEC = 10;
+var MAX_POLL_ATTEMPTS = 80;
+var INITIAL_WAIT_SEC = 45;
+
+var FARM_OBJECTS = [
+  'red apples', 'yellow chicks', 'wheat bundles', 'orange carrots',
+  'white eggs', 'pink piglets', 'yellow ducklings', 'red tulips',
+  'blue flowers', 'brown hay bales'
+];
+
+function durationByNumber(n) {
+  if (n <= 5) return 121;
+  if (n <= 15) return 153;
+  return 241;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════════════════
+var toastTimeout = null;
+function showToast(message, type, duration) {
+  type = type || 'success';
+  duration = duration || 2800;
+  var toast = document.getElementById('toast');
+  var text = document.getElementById('toast-text');
+  toast.className = 'toast';
+  void toast.offsetWidth;
+  text.textContent = message;
+  toast.className = 'toast ' + type;
+  setTimeout(function() { toast.classList.add('visible'); }, 10);
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(function() { toast.classList.remove('visible'); }, duration);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// LOGS VISIBLES
+// ══════════════════════════════════════════════════════════════════
+function addLog(msg, type) {
+  type = type || '';
+  var box = document.getElementById('log-box');
+  var line = document.createElement('div');
+  line.className = 'log-line ' + type;
+  var time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  line.textContent = '[' + time + '] ' + msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  console.log('[Comptine v3] ' + msg);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// UTILITAIRES
+// ══════════════════════════════════════════════════════════════════
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+function setStatus(text) {
+  var bar = document.getElementById('status-bar');
+  var txt = document.getElementById('status-text');
+  if (text) { bar.classList.add('visible'); txt.textContent = text; }
+  else bar.classList.remove('visible');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ANTI-VEILLE
+// ══════════════════════════════════════════════════════════════════
+var wakeLockSentinel = null;
+var wakeEnabled = false;
+var canvasStream = null;
+
+function isWakeSupported() {
+  return 'wakeLock' in navigator && typeof navigator.wakeLock.request === 'function';
+}
+
+async function activateWake() {
+  if (isWakeSupported()) {
+    try {
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      wakeLockSentinel.addEventListener('release', function() {
+        wakeLockSentinel = null;
+        updateWakeUI();
+      });
+      return true;
+    } catch (e) {
+      addLog('Wake lock refusé : ' + e.message, 'warn');
+    }
+  }
+  // Fallback canvas stream
+  try {
+    var canvas = document.createElement('canvas');
+    canvas.width = 2; canvas.height = 2;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 2, 2);
+    if (typeof canvas.captureStream === 'function') {
+      canvasStream = canvas.captureStream(1);
+      var video = document.getElementById('noSleepVideo');
+      video.srcObject = canvasStream;
+      video.play().catch(function() {});
+      return true;
+    }
+  } catch (e) {
+    addLog('Canvas stream refusé : ' + e.message, 'warn');
+  }
+  return false;
+}
+
+async function deactivateWake() {
+  if (wakeLockSentinel) {
+    try { await wakeLockSentinel.release(); } catch (e) {}
+    wakeLockSentinel = null;
+  }
+  if (canvasStream) {
+    try { canvasStream.getTracks().forEach(function(t) { t.stop(); }); } catch (e) {}
+    canvasStream = null;
+    var video = document.getElementById('noSleepVideo');
+    if (video) { try { video.pause(); video.srcObject = null; } catch (e) {} }
+  }
+}
+
+function updateWakeUI() {
+  var el = document.getElementById('wake-status');
+  var txt = document.getElementById('wake-status-text');
+  var btn = document.getElementById('wake-toggle-btn');
+  el.classList.remove('active');
+  var isActive = wakeLockSentinel !== null || canvasStream !== null;
+  if (wakeEnabled && isActive) {
+    el.classList.add('active');
+    txt.textContent = '✅ L\'écran reste allumé';
+    btn.textContent = 'Désactiver';
+  } else if (wakeEnabled) {
+    txt.textContent = '⏳ Touchez la page pour activer';
+    btn.textContent = 'Désactiver';
+  } else {
+    txt.textContent = '💤 Veille automatique';
+    btn.textContent = 'Garder l\'écran allumé';
+  }
+}
+
+async function toggleWake() {
+  if (wakeEnabled) {
+    wakeEnabled = false;
+    await deactivateWake();
+    try { localStorage.setItem(WAKE_PREF_KEY, '0'); } catch (e) {}
+    showToast('Veille automatique', 'warn');
+  } else {
+    wakeEnabled = true;
+    var ok = await activateWake();
+    try { localStorage.setItem(WAKE_PREF_KEY, '1'); } catch (e) {}
+    showToast(ok ? 'Écran maintenu allumé' : 'Non supporté par ce navigateur', ok ? 'success' : 'warn');
+  }
+  updateWakeUI();
+}
+
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible' && wakeEnabled) {
+    activateWake().then(updateWakeUI);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// CLÉ API
+// ══════════════════════════════════════════════════════════════════
+function getApiKey() {
+  try { return (localStorage.getItem(STORAGE_KEY) || '').trim(); }
+  catch (e) { return ''; }
+}
+
+function saveApiKey() {
+  var input = document.getElementById('api-key-input');
+  var key = input.value.trim();
+  if (!key) {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    updateApiUI();
+    showToast('Clé supprimée', 'warn');
+    return;
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, key);
+    updateApiUI();
+    showToast('Clé enregistrée ✓', 'success');
+    input.blur();
+  } catch (e) {
+    showToast('Erreur : ' + e.message, 'error');
+  }
+}
+
+function updateApiUI() {
+  var status = document.getElementById('api-status');
+  var text = document.getElementById('api-status-text');
+  var key = getApiKey();
+  if (key) {
+    status.classList.add('ok');
+    text.textContent = 'Clé active · ' + key.slice(0, 8) + '…' + key.slice(-4);
+  } else {
+    status.classList.remove('ok');
+    text.textContent = 'Aucune clé enregistrée';
+  }
+  updateButtons();
+}
+
+function updateButtons() {
+  var hasKey = !!getApiKey();
+  document.getElementById('test-one-btn').disabled = !hasKey || state.isRunning;
+  document.getElementById('generate-btn').disabled = !hasKey || state.isRunning;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PROMPT
+// ══════════════════════════════════════════════════════════════════
+function buildPrompt(n) {
+  var objectType = FARM_OBJECTS[(n - 1) % FARM_OBJECTS.length];
+  return [
+    'Animated children\'s counting rhyme scene set on a warm sunny farm.',
+    'A cute friendly small fox character with big expressive eyes stands in the middle of a rustic farmyard with a wooden fence, hay bales, and green grass.',
+    'The scene clearly shows exactly ' + n + ' ' + objectType + ' arranged in a countable row in front of the fox, each object fully visible and separated.',
+    'The fox looks at the objects and gently counts them by pointing with its paw, one by one.',
+    'Soft warm golden sunlight, storybook illustration style, gentle camera push-in, cozy and calm atmosphere, hand-painted feel.',
+    'The number ' + n + ' appears briefly and gently at the top of the frame at the end.',
+    'No other text, no watermark, no logo.',
+    'Vertical 9:16 portrait format, 24fps, soft ambient sound only, no music, no dialogue.'
+  ].join(' ');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GALERIE PERSISTANTE
+// ══════════════════════════════════════════════════════════════════
+function loadGallery() {
+  try {
+    var raw = localStorage.getItem(GALLERY_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (e) { return []; }
+}
+
+function saveGallery(items) {
+  try { localStorage.setItem(GALLERY_KEY, JSON.stringify(items)); } catch (e) {}
+}
+
+function addToGalleryAndSave(videoUrl, number) {
+  var items = loadGallery();
+  items.push({ url: videoUrl, number: number, ts: Date.now() });
+  saveGallery(items);
+  renderGallery();
+}
+
+function renderGallery() {
+  var items = loadGallery();
+  var galleryEl = document.getElementById('gallery');
+  var grid = document.getElementById('gallery-grid');
+  if (!items.length) {
+    galleryEl.style.display = 'none';
+    grid.innerHTML = '';
+    return;
+  }
+  galleryEl.style.display = 'block';
+  grid.innerHTML = '';
+  items.sort(function(a, b) { return a.number - b.number; });
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var el = document.createElement('div');
+    el.className = 'gallery-item';
+    el.innerHTML =
+      '<video controls preload="metadata" playsinline muted>' +
+      '<source src="' + it.url + '" type="video/mp4">' +
+      '</video>' +
+      '<div class="g-caption">' +
+      '<span>Chiffre ' + it.number + '</span>' +
+      '<a href="' + it.url + '" download="chiffre-' + it.number + '.mp4" target="_blank">⬇︎</a>' +
+      '</div>';
+    grid.appendChild(el);
+  }
+}
+
+function clearGallery() {
+  if (!confirm('Effacer toutes les vidéos de la galerie ?')) return;
+  saveGallery([]);
+  renderGallery();
+  showToast('Galerie effacée', 'warn');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ÉTAT
+// ══════════════════════════════════════════════════════════════════
+var state = {
+  isRunning: false,
+  stopRequested: false,
+  total: 0,
+  completed: 0,
+  failed: 0,
+  queue: []
+};
+
+// ══════════════════════════════════════════════════════════════════
+// API
+// ══════════════════════════════════════════════════════════════════
+async function apiFetch(url, options, label) {
+  options = options || {};
+  label = label || 'API';
+  var maxAttempts = 4;
+  for (var attempt = 0; attempt < maxAttempts; attempt++) {
+    if (state.stopRequested) throw new Error('Arrêt demandé');
+    try {
+      var res = await fetch(url, options);
+      if (res.status === 429) {
+        var wait429 = [15, 30, 45, 60][Math.min(attempt, 3)];
+        addLog(label + ' : 429, attente ' + wait429 + 's', 'warn');
+        setStatus('L\'IA se prépare… (' + wait429 + 's)');
+        await sleep(wait429 * 1000);
+        continue;
+      }
+      if (res.status === 503) {
+        var wait503 = [5, 10, 15, 20][Math.min(attempt, 3)];
+        addLog(label + ' : 503, attente ' + wait503 + 's', 'warn');
+        setStatus('Préparation… (' + wait503 + 's)');
+        await sleep(wait503 * 1000);
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (e.message === 'Arrêt demandé') throw e;
+      var waitN = [3, 5, 8, 12][Math.min(attempt, 3)];
+      addLog(label + ' : réseau, retry ' + waitN + 's', 'warn');
+      await sleep(waitN * 1000);
+    }
+  }
+  return fetch(url, options);
+}
+
+async function createVideoTask(prompt, numFrames) {
+  var body = {
+    model: MODEL_VIDEO,
+    prompt: prompt,
+    num_frames: numFrames,
+    frame_rate: FRAME_RATE
+  };
+  addLog('POST /videos — num_frames=' + numFrames);
+  var res = await apiFetch(API_BASE + '/videos', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + getApiKey(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  }, 'Création');
+  if (!res.ok) {
+    var err = await res.text();
+    addLog('HTTP ' + res.status + ' — ' + err.slice(0, 200), 'err');
+    throw new Error('HTTP ' + res.status + ' — ' + err.slice(0, 150));
+  }
+  var data = await res.json();
+  var videoId = data.video_id || data.id || data.task_id;
+  if (!videoId) {
+    addLog('Réponse sans video_id : ' + JSON.stringify(data).slice(0, 200), 'err');
+    throw new Error('Pas de video_id');
+  }
+  addLog('Tâche créée : ' + String(videoId).slice(0, 30) + '…', 'ok');
+  return videoId;
+}
+
+async function pollVideo(videoId, onProgress) {
+  addLog('Attente initiale ' + INITIAL_WAIT_SEC + 's…');
+  var remaining = INITIAL_WAIT_SEC;
+  while (remaining > 0) {
+    if (state.stopRequested) throw new Error('Arrêt demandé');
+    onProgress('L\'image prend vie… — ' + remaining + 's');
+    await sleep(1000);
+    remaining--;
+  }
+
+  for (var attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+    if (state.stopRequested) throw new Error('Arrêt demandé');
+    addLog('Poll #' + (attempt + 1));
+    var url = POLL_BASE + '?video_id=' + encodeURIComponent(videoId) + '&model_name=' + encodeURIComponent(MODEL_VIDEO);
+    var res = await apiFetch(url, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + getApiKey() }
+    }, 'Polling');
+    var d = await res.json();
+    var status = d.status || 'unknown';
+    var progress = d.progress || 0;
+    addLog('Statut : ' + status + ' · ' + progress + '%');
+
+    if (status === 'completed' || status === 'succeeded' || status === 'done') {
+      var videoUrl = (d.metadata && d.metadata.url) || d.url || (d.output && d.output.url);
+      if (!videoUrl) throw new Error('Terminé mais pas d\'URL');
+      addLog('URL vidéo récupérée ✓', 'ok');
+      return videoUrl;
+    }
+    if (status === 'failed' || status === 'error' || status === 'cancelled') {
+      addLog('Statut d\'échec : ' + status, 'err');
+      throw new Error('Échec (' + status + ')');
+    }
+    onProgress('Création… ' + progress + '%');
+
+    // Attente avant prochain poll
+    if (attempt < MAX_POLL_ATTEMPTS - 1) {
+      var r = POLL_INTERVAL_SEC;
+      while (r > 0) {
+        if (state.stopRequested) throw new Error('Arrêt demandé');
+        onProgress('Création… ' + progress + '% (prochain check ' + r + 's)');
+        await sleep(1000);
+        r--;
+      }
+    }
+  }
+  throw new Error('Délai maximal dépassé');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FILE
+// ══════════════════════════════════════════════════════════════════
+function renderQueue() {
+  var queueCard = document.getElementById('queue-card');
+  var queueEl = document.getElementById('queue');
+  if (!state.queue.length) { queueCard.style.display = 'none'; return; }
+  queueCard.style.display = 'block';
+  var html = '';
+  for (var i = 0; i < state.queue.length; i++) {
+    var item = state.queue[i];
+    var icon = '○', status = 'En attente', cls = '';
+    if (item.status === 'creating') { icon = '◐'; status = 'Préparation…'; cls = 'creating'; }
+    else if (item.status === 'processing') { icon = '◐'; status = item.progress || 'En cours…'; cls = 'processing'; }
+    else if (item.status === 'done') { icon = '●'; status = 'Terminé'; cls = 'done'; }
+    else if (item.status === 'failed') { icon = '✕'; status = item.progress || 'Échec'; cls = 'failed'; }
+    html += '<div class="queue-item ' + cls + '">' +
+      '<div class="q-icon">' + icon + '</div>' +
+      '<div class="q-name">Chiffre ' + item.number + '</div>' +
+      '<div class="q-status">' + status + '</div>' +
+      '</div>';
+  }
+  queueEl.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GÉNÉRATION D'UN CHIFFRE
+// ══════════════════════════════════════════════════════════════════
+async function generateOne(item) {
+  item.status = 'creating';
+  item.progress = 'Préparation…';
+  renderQueue();
+
+  var prompt = buildPrompt(item.number);
+  var numFrames = durationByNumber(item.number);
+  addLog('── Chiffre ' + item.number + ' ──');
+  var videoId = await createVideoTask(prompt, numFrames);
+  item.videoId = videoId;
+  item.status = 'processing';
+  item.progress = 'En cours…';
+  renderQueue();
+
+  var videoUrl = await pollVideo(videoId, function(p) {
+    item.progress = p;
+    renderQueue();
+  });
+
+  item.status = 'done';
+  item.progress = 'Terminé';
+  item.videoUrl = videoUrl;
+  state.completed++;
+  renderQueue();
+  addToGalleryAndSave(videoUrl, item.number);
+  addLog('Chiffre ' + item.number + ' terminé ✓', 'ok');
+  showToast('Chiffre ' + item.number + ' prêt !', 'success');
+  return videoUrl;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// WORKFLOW : TEST 1
+// ══════════════════════════════════════════════════════════════════
+async function testOne() {
+  if (state.isRunning) return;
+  if (!getApiKey()) { showToast('Ajoutez votre clé', 'error'); return; }
+
+  state.isRunning = true;
+  state.stopRequested = false;
+  state.total = 1;
+  state.completed = 0;
+  state.failed = 0;
+  state.queue = [{ number: 1, status: 'pending', progress: null }];
+
+  document.getElementById('stop-btn').style.display = 'block';
+  updateButtons();
+  renderQueue();
+
+  await activateWake();
+
+  try {
+    await
