@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comptine IA — Test</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, Arial, sans-serif; background: #fff8ec; color: #2b1d0e; padding: 1rem; max-width: 600px; margin: 0 auto; }
+  h1 { font-size: 1.2rem; text-align: center; margin-bottom: 1rem; }
+  .card { background: #fff; border: 1px solid #f0e2cc; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
+  .card h2 { font-size: 0.75rem; text-transform: uppercase; color: #8a7a63; margin-bottom: 0.6rem; }
+  input { width: 100%; padding: 0.8rem; border-radius: 8px; border: 1px solid #f0e2cc; font-family: monospace; font-size: 0.85rem; margin-bottom: 0.5rem; }
+  button { font-family: inherit; font-size: 0.95rem; font-weight: 600; padding: 0.85rem; border-radius: 10px; border: none; background: #2b1d0e; color: #fff; width: 100%; cursor: pointer; }
+  button:disabled { opacity: 0.4; }
+  button.secondary { background: transparent; color: #2b1d0e; border: 2px solid #2b1d0e; margin-top: 0.5rem; }
+  .status { font-size: 0.75rem; padding: 0.55rem; border-radius: 6px; margin-top: 0.5rem; background: #f5f5f5; color: #8a7a63; }
+  .status.ok { background: #e3f5e9; color: #2d8a4e; font-weight: 600; }
+  .log { background: #1a1a1a; color: #d4d4d4; border-radius: 8px; padding: 0.7rem; font-family: monospace; font-size: 0.7rem; max-height: 200px; overflow-y: auto; margin-top: 0.5rem; display: none; }
+  .log.visible { display: block; }
+  .log div { margin-bottom: 0.2rem; }
+  .log .ok { color: #4ade80; }
+  .log .err { color: #f87171; }
+  .log .warn { color: #fbbf24; }
+</style>
+</head>
+<body>
+
+<h1>🦊 Comptine IA — Test</h1>
+
+<div class="card">
+  <h2>🔑 Clé API</h2>
+  <input type="text" id="key-input" placeholder="sk-..." autocapitalize="off" autocorrect="off" spellcheck="false">
+  <button id="save-key">Enregistrer</button>
+  <div class="status" id="status-key">Aucune clé</div>
+</div>
+
+<div class="card">
+  <h2>🎬 Test</h2>
+  <button id="test-btn" disabled>▶ Tester le chiffre 1</button>
+  <button id="log-btn" class="secondary">📋 Afficher les logs</button>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+var API_BASE = 'https://apihub.agnes-ai.com/v1';
+var POLL_BASE = 'https://apihub.agnes-ai.com/agnesapi';
+var MODEL = 'agnes-video-v2.0';
+var KEY_STORAGE = 'comptine_test_key_v1';
+
+function addLog(msg, cls) {
+  var box = document.getElementById('log');
+  var line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  console.log(msg);
+}
+
+function getKey() {
+  try { return localStorage.getItem(KEY_STORAGE) || ''; } catch (e) { return ''; }
+}
+
+function updateUI() {
+  var key = getKey();
+  var statusEl = document.getElementById('status-key');
+  var testBtn = document.getElementById('test-btn');
+  if (key) {
+    statusEl.className = 'status ok';
+    statusEl.textContent = 'Clé active : ' + key.slice(0, 10) + '…';
+    testBtn.disabled = false;
+  } else {
+    statusEl.className = 'status';
+    statusEl.textContent = 'Aucune clé';
+    testBtn.disabled = true;
+  }
+}
+
+document.getElementById('save-key').addEventListener('click', function() {
+  var v = document.getElementById('key-input').value.trim();
+  if (!v) { localStorage.removeItem(KEY_STORAGE); updateUI(); alert('Clé effacée'); return; }
+  try {
+    localStorage.setItem(KEY_STORAGE, v);
+    updateUI();
+    alert('Clé enregistrée !');
+  } catch (e) {
+    alert('Erreur : ' + e.message);
+  }
+});
+
+document.getElementById('log-btn').addEventListener('click', function() {
+  document.getElementById('log').classList.toggle('visible');
+});
+
+document.getElementById('test-btn').addEventListener('click', async function() {
+  var key = getKey();
+  if (!key) { alert('Pas de clé'); return; }
+
+  addLog('Test démarré…');
+
+  // Créer la tâche
+  addLog('POST /videos');
+  var body = {
+    model: MODEL,
+    prompt: 'A cute small fox on a farm counting 1 red apple, children storybook illustration style, warm golden light, vertical 9:16 portrait.',
+    num_frames: 121,
+    frame_rate: 24
+  };
+
+  var res;
+  try {
+    res = await fetch(API_BASE + '/videos', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + key,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+  } catch (e) {
+    addLog('Erreur réseau : ' + e.message, 'err');
+    return;
+  }
+
+  addLog('HTTP ' + res.status);
+  if (!res.ok) {
+    var txt = await res.text();
+    addLog('Erreur : ' + txt.slice(0, 300), 'err');
+    return;
+  }
+
+  var data = await res.json();
+  addLog('Réponse : ' + JSON.stringify(data).slice(0, 200), 'ok');
+  var videoId = data.video_id || data.id || data.task_id;
+  if (!videoId) { addLog('Pas de video_id', 'err'); return; }
+  addLog('Tâche : ' + videoId, 'ok');
+
+  // Poll
+  for (var i = 0; i < 60; i++) {
+    await new Promise(function(r) { setTimeout(r, 10000); });
+    addLog('Poll #' + (i + 1));
+    var url = POLL_BASE + '?video_id=' + encodeURIComponent(videoId) + '&model_name=' + encodeURIComponent(MODEL);
+    var r2;
+    try {
+      r2 = await fetch(url, { headers: { 'Authorization': 'Bearer ' + key } });
+    } catch (e) {
+      addLog('Poll erreur : ' + e.message, 'warn');
+      continue;
+    }
+    var d = await r2.json();
+    var st = d.status || '?';
+    var pg = d.progress || 0;
+    addLog('Statut : ' + st + ' · ' + pg + '%');
+
+    if (st === 'completed' || st === 'succeeded' || st === 'done') {
+      var u = (d.metadata && d.metadata.url) || d.url || (d.output && d.output.url);
+      addLog('URL : ' + u, 'ok');
+      if (u) {
+        var v = document.createElement('video');
+        v.src = u; v.controls = true; v.muted = true;
+        v.style.width = '100%'; v.style.marginTop = '1rem';
+        document.body.appendChild(v);
+      }
+      return;
+    }
+    if (st === 'failed' || st === 'error') {
+      addLog('Échec : ' + JSON.stringify(d).slice(0, 300), 'err');
+      return;
+    }
+  }
+  addLog('Timeout', 'err');
+});
+
+updateUI();
+addLog('Prêt.');
+</script>
+</body>
+</html>
