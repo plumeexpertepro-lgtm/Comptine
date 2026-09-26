@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Comptine IA — Ferme · Petit Renard · 1 à 5</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --bg: #fff8ec; --panel: #ffffff; --border: #f0e2cc;
+    --ink: #2b1d0e; --ink-dim: #8a7a63;
+    --success: #2d8a4e; --error: #c0392b; --warn: #d4a017;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg); color: var(--ink); min-height: 100vh;
+    padding: 1.2rem 1rem 4rem; font-size: 15px; line-height: 1.5;
+    max-width: 700px; margin: 0 auto;
+  }
+  header { text-align: center; margin-bottom: 1.2rem; }
+  h1 { font-size: 1.3rem; font-weight: 700; margin-bottom: 0.2rem; }
+  .subtitle { font-size: 0.82rem; color: var(--ink-dim); font-style: italic; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1rem 1.1rem; margin-bottom: 1rem;
+  }
+  .card h2 {
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-dim); font-weight: 700; margin-bottom: 0.6rem;
+  }
+
+  input[type="password"], input[type="text"] {
+    width: 100%; padding: 0.85rem 1rem; border-radius: 8px;
+    border: 1px solid var(--border); background: #fafafa;
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem;
+    color: var(--ink); margin-bottom: 0.6rem;
+  }
+  input:focus { outline: none; border-color: var(--ink); }
+
+  button {
+    font-family: inherit; font-size: 0.95rem; font-weight: 600;
+    padding: 0.85rem 1.2rem; border-radius: 10px;
+    border: none; background: var(--ink); color: #fff;
+    cursor: pointer; transition: transform 0.1s, opacity 0.2s;
+    width: 100%;
+  }
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button.secondary {
+    background: transparent; color: var(--ink);
+    border: 2px solid var(--ink);
+  }
+
+  .api-status {
+    font-size: 0.75rem; padding: 0.55rem 0.8rem;
+    border-radius: 6px; margin-top: 0.5rem;
+    background: #f5f5f5; color: var(--ink-dim);
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .api-status.ok { background: #e3f5e9; color: var(--success); font-weight: 600; }
+  .api-status .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+  .preview-info {
+    display: flex; gap: 0.5rem; flex-wrap: wrap;
+    font-size: 0.82rem;
+  }
+  .preview-info span {
+    background: var(--bg); padding: 0.35rem 0.7rem;
+    border-radius: 16px; border: 1px solid var(--border);
+  }
+
+  .queue { margin-top: 1rem; }
+  .queue-item {
+    display: flex; align-items: center; gap: 0.7rem;
+    padding: 0.7rem 0.9rem; border-radius: 8px;
+    border: 1px solid var(--border); margin-bottom: 0.4rem;
+    background: var(--panel); font-size: 0.85rem;
+  }
+  .queue-item.pending { opacity: 0.5; }
+  .queue-item.creating { border-color: var(--warn); }
+  .queue-item.processing { border-color: var(--ink); }
+  .queue-item.done { border-color: var(--success); }
+  .queue-item.failed { border-color: var(--error); }
+  .queue-item .q-icon { font-size: 1rem; width: 1.6rem; text-align: center; }
+  .queue-item .q-name { flex: 1; min-width: 0; font-weight: 600; }
+  .queue-item .q-status { font-size: 0.75rem; color: var(--ink-dim); }
+
+  .gallery { margin-top: 1.5rem; }
+  .gallery-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.7rem;
+  }
+  .gallery-item {
+    border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--border); background: #000;
+  }
+  .gallery-item video { width: 100%; display: block; aspect-ratio: 9/16; object-fit: cover; }
+  .gallery-item .g-caption {
+    padding: 0.4rem 0.6rem; background: var(--panel);
+    font-size: 0.72rem; color: var(--ink-dim);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .gallery-item .g-caption a { color: var(--ink); text-decoration: underline; font-size: 0.72rem; }
+
+  .status-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--ink); color: #fff; padding: 0.7rem 1rem;
+    font-size: 0.78rem; display: flex; align-items: center; gap: 0.6rem;
+    transform: translateY(100%); transition: transform 0.3s;
+    z-index: 100;
+  }
+  .status-bar.visible { transform: translateY(0); }
+  .spinner {
+    width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.8s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .toast {
+    position: fixed; top: 1.2rem; left: 50%;
+    transform: translateX(-50%) translateY(-100px);
+    background: var(--ink); color: #fff;
+    padding: 0.8rem 1.3rem; border-radius: 10px;
+    font-size: 0.85rem; font-weight: 500;
+    z-index: 1000; opacity: 0;
+    transition: transform 0.35s ease, opacity 0.35s ease;
+    max-width: 90vw; text-align: center;
+  }
+  .toast.visible { transform: translateX(-50%) translateY(0); opacity: 1; }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--error); }
+  .toast.warn { background: var(--warn); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🦊 Comptine IA — Ferme</h1>
+  <p class="subtitle">Apprendre à compter avec un petit renard</p>
+</header>
+
+<div class="card">
+  <h2>🔑 Clé API Agnes</h2>
+  <input type="text" id="api-key-input" placeholder="Collez votre clé API ici (sk-...)" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <button id="api-save-btn" type="button">Enregistrer la clé</button>
+  <div class="api-status" id="api-status">
+    <span class="dot"></span>
+    <span id="api-status-text">Aucune clé enregistrée</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🎬 Scène à générer</h2>
+  <div class="preview-info">
+    <span>🐄 Ferme</span>
+    <span>🦊 Petit renard</span>
+    <span>🧒 Voix enfant</span>
+    <span>📱 9:16</span>
+    <span>⚡ 5 s</span>
+  </div>
+  <p style="font-size:0.8rem; color:var(--ink-dim); margin-top:0.6rem;">
+    Test : chiffres <strong>1 à 5</strong>. Chaque vidéo est générée par l’IA.
+  </p>
+  <button id="generate-btn" type="button" style="margin-top:0.8rem;" disabled>
+    Générer 1 à 5
+  </button>
+  <button id="stop-btn" type="button" class="secondary" style="margin-top:0.5rem; display:none;">
+    ⏹ Arrêter
+  </button>
+</div>
+
+<div class="queue" id="queue" style="display:none;"></div>
+
+<div class="gallery" id="gallery" style="display:none;">
+  <h2 style="font-size:0.9rem; margin-bottom:0.6rem;">🎥 Vidéos générées</h2>
+  <div class="gallery-grid" id="gallery-grid"></div>
+</div>
+
+<div class="status-bar" id="status-bar">
+  <div class="spinner"></div>
+  <span id="status-text">Préparation…</span>
+</div>
+
+<div class="toast" id="toast">
+  <span id="toast-text">Message</span>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+// CONFIGURATION
+// ══════════════════════════════════════════════════════════════════
+var API_BASE = 'https://apihub.agnes-ai.com/v1';
+var POLL_BASE = 'https://apihub.agnes-ai.com/agnesapi';
+var MODEL_VIDEO = 'agnes-video-v2.0';
+var FRAME_RATE = 24;
+var STORAGE_KEY = 'comptine_ia_api_key_v1';
+var CREATE_INTERVAL_MS = 62000;
+var POLL_INTERVAL_SEC = 8;
+var MAX_POLL_ATTEMPTS = 100;
+
+var FARM_OBJECTS = [
+  'red apples', 'yellow chicks', 'wheat bundles', 'orange carrots',
+  'white eggs', 'pink piglets', 'yellow ducklings', 'red tulips',
+  'blue flowers', 'brown hay bales'
+];
+
+function durationByNumber(n) {
+  if (n <= 5) return 121;
+  if (n <= 15) return 153;
+  return 241;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════════════════
+var toastTimeout = null;
+function showToast(message, type, duration) {
+  type = type || 'success';
+  duration = duration || 2800;
+  var toast = document.getElementById('toast');
+  var text = document.getElementById('toast-text');
+  toast.className = 'toast';
+  void toast.offsetWidth;
+  text.textContent = message;
+  toast.className = 'toast ' + type;
+  setTimeout(function() { toast.classList.add('visible'); }, 10);
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(function() { toast.classList.remove('visible'); }, duration);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// UTILITAIRES
+// ══════════════════════════════════════════════════════════════════
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+function log(msg) { console.log('[Comptine IA] ' + msg); }
+function setStatus(text) {
+  var bar = document.getElementById('status-bar');
+  var txt = document.getElementById('status-text');
+  if (text) { bar.classList.add('visible'); txt.textContent = text; }
+  else bar.classList.remove('visible');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CLÉ API
+// ══════════════════════════════════════════════════════════════════
+function getApiKey() {
+  try { return (localStorage.getItem(STORAGE_KEY) || '').trim(); }
+  catch (e) { return ''; }
+}
+
+function saveApiKey() {
+  var input = document.getElementById('api-key-input');
+  var key = input.value.trim();
+  if (!key) {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    updateApiUI();
+    showToast('Clé supprimée', 'warn');
+    return;
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, key);
+    updateApiUI();
+    showToast('Clé enregistrée ✓', 'success');
+    input.blur();
+  } catch (e) {
+    showToast('Erreur : ' + e.message, 'error');
+  }
+}
+
+function updateApiUI() {
+  var status = document.getElementById('api-status');
+  var text = document.getElementById('api-status-text');
+  var key = getApiKey();
+  if (key) {
+    status.classList.add('ok');
+    text.textContent = 'Clé active · ' + key.slice(0, 8) + '…' + key.slice(-4);
+  } else {
+    status.classList.remove('ok');
+    text.textContent = 'Aucune clé enregistrée';
+  }
+  updateGenerateBtn();
+}
+
+function updateGenerateBtn() {
+  var btn = document.getElementById('generate-btn');
+  var hasKey = !!getApiKey();
+  btn.disabled = !hasKey || state.isRunning;
+  if (state.isRunning) {
+    btn.textContent = 'Création… (' + (state.completed + state.failed) + '/' + state.total + ')';
+  } else {
+    btn.textContent = 'Générer 1 à 5';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PROMPT
+// ══════════════════════════════════════════════════════════════════
+function buildPrompt(n) {
+  var objectType = FARM_OBJECTS[(n - 1) % FARM_OBJECTS.length];
+  return [
+    'Animated children\'s counting rhyme scene set on a warm sunny farm.',
+    'A cute friendly small fox character with big expressive eyes stands in the middle of a rustic farmyard with a wooden fence, hay bales, and green grass.',
+    'The scene clearly shows exactly ' + n + ' ' + objectType + ' arranged in a countable row in front of the fox, each object fully visible and separated.',
+    'The fox looks at the objects and gently counts them by pointing with its paw, one by one.',
+    'Soft warm golden sunlight, storybook illustration style, gentle camera push-in, cozy and calm atmosphere, hand-painted feel.',
+    'The number ' + n + ' appears briefly and gently at the top of the frame at the end.',
+    'No other text, no watermark, no logo.',
+    'Vertical 9:16 portrait format, 24fps, soft ambient sound only, no music, no dialogue.'
+  ].join(' ');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ÉTAT
+// ══════════════════════════════════════════════════════════════════
+var state = {
+  isRunning: false,
+  stopRequested: false,
+  total: 5,
+  completed: 0,
+  failed: 0,
+  queue: []
+};
+
+// ══════════════════════════════════════════════════════════════════
+// API
+// ══════════════════════════════════════════════════════════════════
+async function apiFetch(url, options, label) {
+  options = options || {};
+  label = label || 'API';
+  for (var attempt = 0; attempt < 6; attempt++) {
+    if (state.stopRequested) throw new Error('Arrêt demandé');
+    try {
+      var res = await fetch(url, options);
+      if (res.status === 429) {
+        var wait429 = [15, 30, 45, 60, 90, 120][Math.min(attempt, 5)];
+        log(label + ' : 429, attente ' + wait429 + 's');
+        setStatus('L\'IA se prépare… (' + wait429 + 's)');
+        await sleep(wait429 * 1000);
+        continue;
+      }
+      if (res.status === 503) {
+        var wait503 = [5, 10, 15, 20, 30, 45][Math.min(attempt, 5)];
+        log(label + ' : 503, attente ' + wait503 + 's');
+        setStatus('Préparation… (' + wait503 + 's)');
+        await sleep(wait503 * 1000);
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (e.message === 'Arrêt demandé') throw e;
+      var waitN = [3, 5, 8, 12, 20, 30][Math.min(attempt, 5)];
+      log(label + ' : réseau, retry ' + waitN + 's');
+      await sleep(waitN * 1000);
+    }
+  }
+  return fetch(url, options);
+}
+
+async function createVideoTask(prompt, numFrames) {
+  var body = {
+    model: MODEL_VIDEO,
+    prompt: prompt,
+    num_frames: numFrames,
+    frame_rate: FRAME_RATE
+  };
+  var res = await apiFetch(API_BASE + '/videos', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + getApiKey(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  }, 'Création');
+  if (!res.ok) {
+    var err = await res.text();
+    throw new Error('HTTP ' + res.status + ' — ' + err.slice(0, 200));
+  }
+  var data = await res.json();
+  var videoId = data.video_id || data.id || data.task_id;
+  if (!videoId) throw new Error('Pas de video_id');
+  return videoId;
+}
+
+async function pollVideo(videoId, onProgress) {
+  var remaining = 30;
+  while (remaining > 0) {
+    if (state.stopRequested) throw new Error('Arrêt demandé');
+    onProgress('L\'image prend vie… — ' + remaining + 's');
+    await sleep(1000);
+    remaining--;
+  }
+  for (var attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+    if (state.stopRequested) throw new Error('Arrêt demandé');
+    if (attempt > 0) {
+      var r = POLL_INTERVAL_SEC;
+      while (r > 0) {
+        if (state.stopRequested) throw new Error('Arrêt demandé');
+        onProgress('Création en cours… — ' + r + 's');
+        await sleep(1000);
+        r--;
+      }
+    }
+    var url = POLL_BASE + '?video_id=' + encodeURIComponent(videoId) + '&model_name=' + encodeURIComponent(MODEL_VIDEO);
+    var res = await apiFetch(url, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + getApiKey() }
+    }, 'Polling');
+    var d = await res.json();
+    var status = d.status || 'unknown';
+    var progress = d.progress || 0;
+    onProgress('Création… ' + progress + '%');
+    if (status === 'completed' || status === 'succeeded' || status === 'done') {
+      var videoUrl = (d.metadata && d.metadata.url) || d.url || (d.output && d.output.url);
+      if (!videoUrl) throw new Error('Terminé mais pas d\'URL');
+      return videoUrl;
+    }
+    if (status === 'failed' || status === 'error' || status === 'cancelled') {
+      throw new Error('Échec (' + status + ')');
+    }
+  }
+  throw new Error('Délai dépassé');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FILE D'ATTENTE
+// ══════════════════════════════════════════════════════════════════
+function renderQueue() {
+  var queueEl = document.getElementById('queue');
+  if (!state.queue.length) { queueEl.style.display = 'none'; return; }
+  queueEl.style.display = 'block';
+  var html = '';
+  for (var i = 0; i < state.queue.length; i++) {
+    var item = state.queue[i];
+    var icon = '○', status = 'En attente', cls = 'pending';
+    if (item.status === 'creating') { icon = '◐'; status = 'Préparation…'; cls = 'creating'; }
+    else if (item.status === 'processing') { icon = '◐'; status = item.progress || 'En cours…'; cls = 'processing'; }
+    else if (item.status === 'done') { icon = '●'; status = 'Terminé'; cls = 'done'; }
+    else if (item.status === 'failed') { icon = '✕'; status = 'Échec'; cls = 'failed'; }
+    html += '<div class="queue-item ' + cls + '">' +
+      '<div class="q-icon">' + icon + '</div>' +
+      '<div class="q-name">Chiffre ' + item.number + '</div>' +
+      '<div class="q-status">' + status + '</div>' +
+      '</div>';
+  }
+  queueEl.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GALERIE
+// ══════════════════════════════════════════════════════════════════
+function addToGallery(videoUrl, number) {
+  var galleryEl = document.getElementById('gallery');
+  var grid = document.getElementById('gallery-grid');
+  galleryEl.style.display = 'block';
+  var el = document.createElement('div');
+  el.className = 'gallery-item';
+  el.innerHTML =
+    '<video controls preload="metadata" playsinline muted>' +
+    '<source src="' + videoUrl + '" type="video/mp4">' +
+    '</video>' +
+    '<div class="g-caption">' +
+    '<span>Chiffre ' + number + '</span>' +
+    '<a href="' + videoUrl + '" download="chiffre-' + number + '.mp4" target="_blank">⬇︎</a>' +
+    '</div>';
+  grid.appendChild(el);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// WORKFLOW
+// ══════════════════════════════════════════════════════════════════
+async function startGeneration() {
+  if (state.isRunning) return;
+  if (!getApiKey()) {
+    showToast('Ajoutez votre clé API', 'error');
+    return;
+  }
+  state.isRunning = true;
+  state.stopRequested = false;
+  state.completed = 0;
+  state.failed = 0;
+  state.total = 5;
+
+  state.queue = [];
+  for (var n = 1; n <= state.total; n++) {
+    state.queue.push({
+      number: n,
+      status: 'pending',
+      progress: null,
+      videoId: null,
+      videoUrl: null
+    });
+  }
+
+  document.getElementById('gallery-grid').innerHTML = '';
+  document.getElementById('gallery').style.display = 'none';
+  document.getElementById('stop-btn').style.display = 'block';
+  updateGenerateBtn();
+  renderQueue();
+
+  var pollingTasks = [];
+
+  for (var i = 0; i < state.queue.length; i++) {
+    if (state.stopRequested) break;
+    var item = state.queue[i];
+
+    try {
+      item.status = 'creating';
+      item.progress = 'Préparation…';
+      renderQueue();
+
+      var prompt = buildPrompt(item.number);
+      var numFrames = durationByNumber(item.number);
+      log('Chiffre ' + item.number + ' — création');
+      var videoId = await createVideoTask(prompt, numFrames);
+      item.videoId = videoId;
+      item.status = 'processing';
+      item.progress = 'En cours…';
+      renderQueue();
+
+      (function(it) {
+        pollingTasks.push((async function() {
+          try {
+            var videoUrl = await pollVideo(it.videoId, function(p) {
+              it.progress = p;
+              renderQueue();
+            });
+            it.status = 'done';
+            it.videoUrl = videoUrl;
+            state.completed++;
+            renderQueue();
+            updateGenerateBtn();
+            addToGallery(videoUrl, it.number);
+            showToast('Chiffre ' + it.number + ' prêt !', 'success');
+          } catch (e) {
+            if (e.message === 'Arrêt demandé') {
+              it.status = 'failed';
+              it.progress = 'Arrêté';
+            } else {
+              it.status = 'failed';
+              it.progress = 'Échec';
+              state.failed++;
+              log('Chiffre ' + it.number + ' — ' + e.message);
+            }
+            renderQueue();
+            updateGenerateBtn();
+          }
+        })());
+      })(item);
+
+    } catch (e) {
+      if (e.message === 'Arrêt demandé') break;
+      item.status = 'failed';
+      item.progress = 'Échec';
+      state.failed++;
+      renderQueue();
+      updateGenerateBtn();
+    }
+
+    if (i < state.queue.length - 1 && !state.stopRequested) {
+      var waitSec = Math.ceil(CREATE_INTERVAL_MS / 1000);
+      for (var r = waitSec; r > 0; r--) {
+        if (state.stopRequested) break;
+        setStatus('Respiration… prochain chiffre dans ' + r + 's');
+        await sleep(1000);
+      }
+    }
+  }
+
+  if (pollingTasks.length > 0) {
+    setStatus('Finalisation…');
+    await Promise.allSettled(pollingTasks);
+  }
+
+  setStatus('✦ ' + state.completed + '/' + state.total + ' vidéos prêtes ✦');
+  await sleep(3500);
+  setStatus(null);
+
+  state.isRunning = false;
+  state.stopRequested = false;
+  document.getElementById('stop-btn').style.display = 'none';
+  updateGenerateBtn();
+  showToast(state.completed + ' vidéo' + (state.completed > 1 ? 's' : '') + ' prête' + (state.completed > 1 ? 's' : ''), 'success');
+}
+
+function stopGeneration() {
+  if (!state.isRunning) return;
+  state.stopRequested = true;
+  setStatus('Arrêt en cours…');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// INITIALISATION
+// ══════════════════════════════════════════════════════════════════
+(function init() {
+  document.getElementById('api-save-btn').addEventListener('click', function() {
+    saveApiKey();
+  });
+  document.getElementById('api-key-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); saveApiKey(); }
+  });
+  document.getElementById('generate-btn').addEventListener('click', function() {
+    startGeneration();
+  });
+  document.getElementById('stop-btn').addEventListener('click', function() {
+    stopGeneration();
+  });
+
+  var input = document.getElementById('api-key-input');
+  var key = getApiKey();
+  if (key) input.value = key;
+
+  updateApiUI();
+  renderQueue();
+  log('Prêt.');
+})();
+</script>
+</body>
+</html>
