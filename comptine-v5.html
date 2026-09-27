@@ -1,1 +1,263 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comptine IA — v5 (prompt simple)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, Arial, sans-serif; background: #fff8ec; color: #2b1d0e; padding: 1rem; max-width: 600px; margin: 0 auto; }
+  h1 { font-size: 1.2rem; text-align: center; margin-bottom: 1rem; }
+  .card { background: #fff; border: 1px solid #f0e2cc; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
+  .card h2 { font-size: 0.75rem; text-transform: uppercase; color: #8a7a63; margin-bottom: 0.6rem; }
+  input { width: 100%; padding: 0.8rem; border-radius: 8px; border: 1px solid #f0e2cc; font-family: monospace; font-size: 0.8rem; margin-bottom: 0.5rem; }
+  button { font-family: inherit; font-size: 0.95rem; font-weight: 600; padding: 0.85rem; border-radius: 10px; border: none; background: #2b1d0e; color: #fff; width: 100%; cursor: pointer; margin-bottom: 0.5rem; }
+  button:disabled { opacity: 0.4; }
+  button.secondary { background: transparent; color: #2b1d0e; border: 2px solid #2b1d0e; }
+  .status { font-size: 0.75rem; padding: 0.55rem; border-radius: 6px; margin-top: 0.5rem; background: #f5f5f5; color: #8a7a63; }
+  .status.ok { background: #e3f5e9; color: #2d8a4e; font-weight: 600; }
+  .status.err { background: #fdecea; color: #c0392b; }
+  .timer { font-size: 1.5rem; font-weight: 700; text-align: center; margin: 0.8rem 0; font-family: monospace; }
+  .bar { height: 8px; background: #f0e2cc; border-radius: 4px; overflow: hidden; margin: 0.5rem 0; }
+  .bar-fill { height: 100%; background: #2d8a4e; width: 0%; transition: width 0.4s; }
+  .log { background: #1a1a1a; color: #d4d4d4; border-radius: 8px; padding: 0.7rem; font-family: monospace; font-size: 0.7rem; max-height: 250px; overflow-y: auto; margin-top: 0.5rem; display: none; }
+  .log.visible { display: block; }
+  .log div { margin-bottom: 0.2rem; }
+  .log .ok { color: #4ade80; }
+  .log .err { color: #f87171; }
+  .log .warn { color: #fbbf24; }
+  video { width: 100%; border-radius: 12px; margin-top: 1rem; display: block; }
+</style>
+</head>
+<body>
 
+<h1>🦊 Comptine IA — v5</h1>
+
+<div class="card">
+  <h2>🔑 Clé API</h2>
+  <input type="text" id="key-input" placeholder="sk-..." autocapitalize="off" autocorrect="off" spellcheck="false">
+  <button id="save-key">Enregistrer</button>
+  <div class="status" id="status-key">Aucune clé</div>
+</div>
+
+<div class="card">
+  <h2>🎬 Test prompt simple</h2>
+  <button id="test-btn" disabled>▶ Tester</button>
+  <button id="stop-btn" class="secondary">⏹ Arrêter</button>
+  <button id="log-btn" class="secondary">📋 Afficher les logs</button>
+
+  <div class="timer" id="timer">00:00</div>
+  <div class="bar"><div class="bar-fill" id="bar-fill"></div></div>
+  <div class="status" id="status-info">Prêt</div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<video id="result-video" controls style="display:none;"></video>
+
+<script>
+var API_BASE = 'https://apihub.agnes-ai.com/v1';
+var POLL_BASE = 'https://apihub.agnes-ai.com/agnesapi';
+var MODEL = 'agnes-video-v2.0';
+var KEY_STORAGE = 'comptine_v5_key';
+
+var POLL_INTERVAL_MS = 10000;
+var MAX_POLLS = 120; // 120 * 10s = 20 minutes
+
+var state = {
+  isRunning: false,
+  stop: false,
+  startTime: null,
+  timerInterval: null,
+  videoId: null
+};
+
+function addLog(msg, cls) {
+  var box = document.getElementById('log');
+  var line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = '[' + new Date().toLocaleTimeString('fr-FR') + '] ' + msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  console.log('[v5] ' + msg);
+}
+
+function getKey() {
+  try { return localStorage.getItem(KEY_STORAGE) || ''; } catch (e) { return ''; }
+}
+
+function updateUI() {
+  var key = getKey();
+  var s = document.getElementById('status-key');
+  var b = document.getElementById('test-btn');
+  if (key) { s.className = 'status ok'; s.textContent = 'Clé active : ' + key.slice(0, 10) + '…'; b.disabled = false; }
+  else { s.className = 'status'; s.textContent = 'Aucune clé'; b.disabled = true; }
+}
+
+document.getElementById('save-key').addEventListener('click', function() {
+  var v = document.getElementById('key-input').value.trim();
+  if (!v) { localStorage.removeItem(KEY_STORAGE); updateUI(); return; }
+  localStorage.setItem(KEY_STORAGE, v);
+  updateUI();
+  alert('Clé enregistrée !');
+});
+
+document.getElementById('log-btn').addEventListener('click', function() {
+  document.getElementById('log').classList.toggle('visible');
+});
+
+function startTimer() {
+  state.startTime = Date.now();
+  if (state.timerInterval) clearInterval(state.timerInterval);
+  state.timerInterval = setInterval(function() {
+    var e = Math.floor((Date.now() - state.startTime) / 1000);
+    document.getElementById('timer').textContent =
+      String(Math.floor(e / 60)).padStart(2, '0') + ':' + String(e % 60).padStart(2, '0');
+  }, 1000);
+}
+function stopTimer() { if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; } }
+function setProgress(p) { document.getElementById('bar-fill').style.width = p + '%'; }
+function setInfo(t, c) { var el = document.getElementById('status-info'); el.className = 'status' + (c ? ' ' + c : ''); el.textContent = t; }
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+// ─── TEST PROMPT SIMPLE ──────────────────────────────────
+document.getElementById('test-btn').addEventListener('click', async function() {
+  var key = getKey();
+  if (!key) { alert('Pas de clé'); return; }
+  if (state.isRunning) return;
+
+  state.isRunning = true;
+  state.stop = false;
+  document.getElementById('test-btn').disabled = true;
+  document.getElementById('result-video').style.display = 'none';
+  document.getElementById('log').classList.add('visible');
+  startTimer();
+  setProgress(5);
+  setInfo('Envoi de la tâche…');
+
+  addLog('── Test prompt SIMPLE ──');
+  addLog('Prompt : "A cute fox on a farm, one red apple, soft colors, simple animation."');
+
+  // PROMPT ULTRA-SIMPLE
+  var body = {
+    model: MODEL,
+    prompt: 'A cute small fox on a farm with one red apple, soft colors, simple animation.',
+    num_frames: 121,
+    frame_rate: 24
+  };
+
+  var res;
+  try {
+    res = await fetch(API_BASE + '/videos', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + key,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+  } catch (e) {
+    addLog('Erreur réseau : ' + e.message, 'err');
+    setInfo('Erreur réseau', 'err');
+    finish();
+    return;
+  }
+
+  addLog('HTTP ' + res.status);
+  if (!res.ok) {
+    var t = await res.text();
+    addLog('Erreur : ' + t.slice(0, 300), 'err');
+    setInfo('Erreur HTTP ' + res.status, 'err');
+    finish();
+    return;
+  }
+
+  var data = await res.json();
+  var videoId = data.video_id || data.id || data.task_id;
+  if (!videoId) { addLog('Pas de video_id', 'err'); setInfo('Pas de video_id', 'err'); finish(); return; }
+
+  state.videoId = videoId;
+  addLog('Tâche : ' + videoId, 'ok');
+  setProgress(10);
+  setInfo('Génération en cours…');
+
+  // Attente initiale 30s
+  for (var i = 30; i > 0; i--) {
+    if (state.stop) { finish(); return; }
+    setInfo('L\'IA démarre… — ' + i + 's');
+    await sleep(1000);
+  }
+
+  // Polling
+  for (var poll = 1; poll <= MAX_POLLS; poll++) {
+    if (state.stop) { addLog('Arrêt demandé', 'warn'); finish(); return; }
+    addLog('Poll #' + poll);
+
+    var url = POLL_BASE + '?video_id=' + encodeURIComponent(videoId) + '&model_name=' + encodeURIComponent(MODEL);
+    var r;
+    try {
+      r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + key } });
+    } catch (e) {
+      addLog('Erreur poll : ' + e.message, 'warn');
+      await sleep(POLL_INTERVAL_MS);
+      continue;
+    }
+
+    var d = await r.json();
+    var st = d.status || '?';
+    var pg = d.progress || 0;
+    addLog('Statut : ' + st + ' · ' + pg + '%');
+
+    var v = 10 + (pg * 0.85);
+    if (v > 95) v = 95;
+    setProgress(v);
+    setInfo('Statut : ' + st + ' · ' + pg + '%');
+
+    if (st === 'completed' || st === 'succeeded' || st === 'done') {
+      var u = (d.metadata && d.metadata.url) || d.url || (d.output && d.output.url);
+      if (u) {
+        addLog('URL : ' + u, 'ok');
+        setProgress(100);
+        setInfo('✅ Vidéo prête !', 'ok');
+        var vv = document.getElementById('result-video');
+        vv.src = u;
+        vv.style.display = 'block';
+        vv.load();
+        finish();
+        return;
+      }
+    }
+
+    if (st === 'failed' || st === 'error' || st === 'cancelled') {
+      addLog('Échec : ' + JSON.stringify(d).slice(0, 300), 'err');
+      setInfo('Échec', 'err');
+      finish();
+      return;
+    }
+
+    await sleep(POLL_INTERVAL_MS);
+  }
+
+  addLog('Timeout', 'err');
+  setInfo('Timeout', 'err');
+  finish();
+});
+
+function finish() {
+  stopTimer();
+  state.isRunning = false;
+  document.getElementById('test-btn').disabled = false;
+}
+
+document.getElementById('stop-btn').addEventListener('click', function() {
+  if (state.isRunning) {
+    state.stop = true;
+    addLog('Arrêt demandé par l\'utilisateur', 'warn');
+  }
+});
+
+updateUI();
+addLog('Prêt.');
+</script>
+</body>
+</html>
