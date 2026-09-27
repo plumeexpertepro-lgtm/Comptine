@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comptine IA — v4</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, Arial, sans-serif; background: #fff8ec; color: #2b1d0e; padding: 1rem; max-width: 600px; margin: 0 auto; }
+  h1 { font-size: 1.2rem; text-align: center; margin-bottom: 1rem; }
+  .card { background: #fff; border: 1px solid #f0e2cc; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
+  .card h2 { font-size: 0.75rem; text-transform: uppercase; color: #8a7a63; margin-bottom: 0.6rem; }
+  input { width: 100%; padding: 0.8rem; border-radius: 8px; border: 1px solid #f0e2cc; font-family: monospace; font-size: 0.8rem; margin-bottom: 0.5rem; }
+  button { font-family: inherit; font-size: 0.95rem; font-weight: 600; padding: 0.85rem; border-radius: 10px; border: none; background: #2b1d0e; color: #fff; width: 100%; cursor: pointer; margin-bottom: 0.5rem; }
+  button:disabled { opacity: 0.4; }
+  button.secondary { background: transparent; color: #2b1d0e; border: 2px solid #2b1d0e; }
+  .status { font-size: 0.75rem; padding: 0.55rem; border-radius: 6px; margin-top: 0.5rem; background: #f5f5f5; color: #8a7a63; }
+  .status.ok { background: #e3f5e9; color: #2d8a4e; font-weight: 600; }
+  .status.warn { background: #fdf5e3; color: #d4a017; }
+  .status.err { background: #fdecea; color: #c0392b; }
+  .wake { font-size: 0.75rem; padding: 0.5rem; border-radius: 6px; margin-top: 0.4rem; background: #eef4ff; color: #2a3a5c; display: flex; justify-content: space-between; align-items: center; }
+  .wake.active { background: #e3f5e9; color: #2d8a4e; }
+  .wake button { width: auto; padding: 0.25rem 0.6rem; font-size: 0.7rem; margin: 0; }
+  .timer { font-size: 1.5rem; font-weight: 700; text-align: center; margin: 0.8rem 0; font-family: monospace; }
+  .progress-bar { height: 8px; background: #f0e2cc; border-radius: 4px; overflow: hidden; margin: 0.5rem 0; }
+  .progress-fill { height: 100%; background: #2d8a4e; width: 0%; transition: width 0.4s; }
+  .log { background: #1a1a1a; color: #d4d4d4; border-radius: 8px; padding: 0.7rem; font-family: monospace; font-size: 0.7rem; max-height: 250px; overflow-y: auto; margin-top: 0.5rem; display: none; }
+  .log.visible { display: block; }
+  .log div { margin-bottom: 0.2rem; }
+  .log .ok { color: #4ade80; }
+  .log .err { color: #f87171; }
+  .log .warn { color: #fbbf24; }
+  video { width: 100%; border-radius: 12px; margin-top: 1rem; display: block; }
+</style>
+</head>
+<body>
+
+<h1>🦊 Comptine IA — v4</h1>
+
+<div class="card">
+  <h2>🔑 Clé API</h2>
+  <input type="text" id="key-input" placeholder="sk-..." autocapitalize="off" autocorrect="off" spellcheck="false">
+  <button id="save-key">Enregistrer</button>
+  <div class="status" id="status-key">Aucune clé</div>
+  <div class="wake" id="wake-box">
+    <span id="wake-text">💤 Veille automatique</span>
+    <button id="wake-btn">Garder l'écran allumé</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🎬 Générer le chiffre 1</h2>
+  <button id="test-btn" disabled>▶ Générer</button>
+  <button id="resume-btn" class="secondary">▶ Reprendre un video_id existant</button>
+  <button id="log-btn" class="secondary">📋 Afficher les logs</button>
+
+  <div class="timer" id="timer">00:00</div>
+  <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+  <div class="status" id="status-info">Prêt</div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<video id="result-video" controls style="display:none;"></video>
+
+<script>
+var API_BASE = 'https://apihub.agnes-ai.com/v1';
+var POLL_BASE = 'https://apihub.agnes-ai.com/agnesapi';
+var MODEL = 'agnes-video-v2.0';
+var KEY_STORAGE = 'comptine_v4_key';
+var WAKE_PREF = 'comptine_v4_wake';
+
+var POLL_INTERVAL_MS = 15000;
+var MAX_POLLS = 200; // 200 * 15s = 50 minutes
+
+var state = {
+  isRunning: false,
+  startTime: null,
+  timerInterval: null,
+  currentVideoId: null
+};
+
+// ─── Logs ────────────────────────────────────────────────
+function addLog(msg, cls) {
+  var box = document.getElementById('log');
+  var line = document.createElement('div');
+  if (cls) line.className = cls;
+  var t = new Date().toLocaleTimeString('fr-FR');
+  line.textContent = '[' + t + '] ' + msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  console.log('[v4] ' + msg);
+}
+
+// ─── Clé API ─────────────────────────────────────────────
+function getKey() {
+  try { return localStorage.getItem(KEY_STORAGE) || ''; } catch (e) { return ''; }
+}
+
+function updateUI() {
+  var key = getKey();
+  var statusEl = document.getElementById('status-key');
+  var testBtn = document.getElementById('test-btn');
+  if (key) {
+    statusEl.className = 'status ok';
+    statusEl.textContent = 'Clé active : ' + key.slice(0, 10) + '…';
+    testBtn.disabled = false;
+  } else {
+    statusEl.className = 'status';
+    statusEl.textContent = 'Aucune clé';
+    testBtn.disabled = true;
+  }
+}
+
+document.getElementById('save-key').addEventListener('click', function() {
+  var v = document.getElementById('key-input').value.trim();
+  if (!v) {
+    localStorage.removeItem(KEY_STORAGE);
+    updateUI();
+    alert('Clé effacée');
+    return;
+  }
+  localStorage.setItem(KEY_STORAGE, v);
+  updateUI();
+  alert('Clé enregistrée !');
+});
+
+// ─── Anti-veille ─────────────────────────────────────────
+var wakeLock = null;
+var canvasStream = null;
+
+function updateWakeUI() {
+  var box = document.getElementById('wake-box');
+  var txt = document.getElementById('wake-text');
+  var btn = document.getElementById('wake-btn');
+  var active = wakeLock !== null || canvasStream !== null;
+  if (active) {
+    box.className = 'wake active';
+    txt.textContent = '✅ Écran maintenu allumé';
+    btn.textContent = 'Désactiver';
+  } else {
+    box.className = 'wake';
+    txt.textContent = '💤 Veille automatique';
+    btn.textContent = 'Garder l\'écran allumé';
+  }
+}
+
+async function activateWake() {
+  if ('wakeLock' in navigator) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', function() { wakeLock = null; updateWakeUI(); });
+      addLog('Wake Lock activé', 'ok');
+      return true;
+    } catch (e) {
+      addLog('Wake Lock refusé : ' + e.message, 'warn');
+    }
+  }
+  try {
+    var canvas = document.createElement('canvas');
+    canvas.width = 2; canvas.height = 2;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 2, 2);
+    if (canvas.captureStream) {
+      canvasStream = canvas.captureStream(1);
+      var video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = canvasStream;
+      video.play().catch(function() {});
+      addLog('Canvas stream activé', 'ok');
+      return true;
+    }
+  } catch (e) {
+    addLog('Canvas échoué : ' + e.message, 'warn');
+  }
+  return false;
+}
+
+async function deactivateWake() {
+  if (wakeLock) { try { await wakeLock.release(); } catch (e) {} wakeLock = null; }
+  if (canvasStream) {
+    try { canvasStream.getTracks().forEach(function(t) { t.stop(); }); } catch (e) {}
+    canvasStream = null;
+  }
+}
+
+document.getElementById('wake-btn').addEventListener('click', async function() {
+  if (wakeLock || canvasStream) {
+    await deactivateWake();
+    localStorage.setItem(WAKE_PREF, '0');
+  } else {
+    await activateWake();
+    localStorage.setItem(WAKE_PREF, '1');
+  }
+  updateWakeUI();
+});
+
+// Réactivation automatique si l'onglet revient au premier plan
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible' && localStorage.getItem(WAKE_PREF) === '1') {
+    if (!wakeLock && !canvasStream) activateWake().then(updateWakeUI);
+  }
+});
+
+// ─── Timer ───────────────────────────────────────────────
+function startTimer() {
+  state.startTime = Date.now();
+  if (state.timerInterval) clearInterval(state.timerInterval);
+  state.timerInterval = setInterval(function() {
+    var elapsed = Math.floor((Date.now() - state.startTime) / 1000);
+    var m = Math.floor(elapsed / 60);
+    var s = elapsed % 60;
+    document.getElementById('timer').textContent =
+      String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }, 1000);
+}
+
+function stopTimer() {
+  if (state.timerInterval) {
+    clearInterval(state.timerInterval);
+    state.timerInterval = null;
+  }
+}
+
+function setProgress(pct) {
+  document.getElementById('progress-fill').style.width = pct + '%';
+}
+
+function setInfo(text, cls) {
+  var el = document.getElementById('status-info');
+  el.className = 'status' + (cls ? ' ' + cls : '');
+  el.textContent = text;
+}
+
+// ─── Bouton logs ─────────────────────────────────────────
+document.getElementById('log-btn').addEventListener('click', function() {
+  document.getElementById('log').classList.toggle('visible');
+});
+
+// ─── Génération ──────────────────────────────────────────
+async function generate() {
+  var key = getKey();
+  if (!key) { alert('Pas de clé'); return; }
+  if (state.isRunning) { alert('Déjà en cours'); return; }
+
+  state.isRunning = true;
+  document.getElementById('test-btn').disabled = true;
+  document.getElementById('result-video').style.display = 'none';
+  document.getElementById('log').classList.add('visible');
+
+  // Active l'anti-veille automatiquement
+  if (!wakeLock && !canvasStream) {
+    await activateWake();
+    updateWakeUI();
+  }
+
+  startTimer();
+  setProgress(5);
+  setInfo('Création de la tâche…');
+
+  addLog('── Nouvelle génération ──');
+  addLog('POST /videos');
+
+  var body = {
+    model: MODEL,
+    prompt: 'A cute small friendly fox with big eyes on a warm sunny farm with a wooden fence and hay bales. The scene clearly shows exactly 1 red apple in front of the fox. Storybook illustration style, soft golden light, gentle camera push-in. Vertical 9:16 portrait, 24fps, no text, no watermark.',
+    num_frames: 121,
+    frame_rate: 24
+  };
+
+  var res;
+  try {
+    res = await fetch(API_BASE + '/videos', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + key,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+  } catch (e) {
+    addLog('Erreur réseau : ' + e.message, 'err');
+    setInfo('Erreur réseau', 'err');
+    state.isRunning = false;
+    stopTimer();
+    document.getElementById('test-btn').disabled = false;
+    return;
+  }
+
+  addLog('HTTP ' + res.status);
+  if (!res.ok) {
+    var txt = await res.text();
+    addLog('Erreur : ' + txt.slice(0, 300), 'err');
+    setInfo('Erreur HTTP ' + res.status, 'err');
+    state.isRunning = false;
+    stopTimer();
+    document.getElementById('test-btn').disabled = false;
+    return;
+  }
+
+  var data = await res.json();
+  var videoId = data.video_id || data.id || data.task_id;
+  if (!videoId) {
+    addLog('Pas de video_id', 'err');
+    setInfo('Pas de video_id', 'err');
+    state.isRunning = false;
+    stopTimer();
+    document.getElementById('test-btn').disabled = false;
+    return;
+  }
+
+  state.currentVideoId = videoId;
+  addLog('Tâche créée : ' + videoId, 'ok');
+  setProgress(10);
+  setInfo('Génération en cours…');
+
+  // ─── Attente initiale 60 s ───────────────────────────
+  addLog('Attente initiale 60s…');
+  for (var i = 60; i > 0; i--) {
+    setInfo('L\'IA démarre… — ' + i + 's');
+    await sleep(1000);
+  }
+
+  // ─── Polling ─────────────────────────────────────────
+  for (var poll = 1; poll <= MAX_POLLS; poll++) {
+    addLog('Poll #' + poll);
+
+    var url = POLL_BASE + '?video_id=' + encodeURIComponent(videoId) + '&model_name=' + encodeURIComponent(MODEL);
+    var r2;
+    try {
+      r2 = await fetch(url, { headers: { 'Authorization': 'Bearer ' + key } });
+    } catch (e) {
+      addLog('Poll erreur : ' + e.message, 'warn');
+      await sleep(POLL_INTERVAL_MS);
+      continue;
+    }
+
+    var d = await r2.json();
+    var st = d.status || '?';
+    var pg = d.progress || 0;
+    addLog('Statut : ' + st + ' · ' + pg + '%');
+
+    // Progression visuelle : de 10% à 95%
+    var visual = 10 + (pg * 0.85);
+    if (visual > 95) visual = 95;
+    setProgress(visual);
+    setInfo('Statut : ' + st + ' · ' + pg + '%');
+
+    if (st === 'completed' || st === 'succeeded' || st === 'done') {
+      var u = (d.metadata && d.metadata.url) || d.url || (d.output && d.output.url);
+      if (!u) {
+        addLog('URL manquante', 'err');
+        setInfo('URL manquante', 'err');
+        break;
+      }
+      addLog('URL : ' + u, 'ok');
+      setProgress(100);
+      setInfo('✅ Vidéo prête !', 'ok');
+      var v = document.getElementById('result-video');
+      v.src = u;
+      v.style.display = 'block';
+      v.load();
+      break;
+    }
+
+    if (st === 'failed' || st === 'error' || st === 'cancelled') {
+      addLog('Échec : ' + JSON.stringify(d).slice(0, 300), 'err');
+      setInfo('Échec', 'err');
+      break;
+    }
+
+    await sleep(POLL_INTERVAL_MS);
+  }
+
+  stopTimer();
+  state.isRunning = false;
+  document.getElementById('test-btn').disabled = false;
+}
+
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+// ─── Reprendre un video_id ───────────────────────────────
+document.getElementById('resume-btn').addEventListener('click', async function() {
+  var id = prompt('Colle ici le video_id à suivre :');
+  if (!id) return;
+  var key = getKey();
+  if (!key) { alert('Pas de clé'); return; }
+
+  document.getElementById('log').classList.add('visible');
+  addLog('── Reprise du suivi : ' + id + ' ──');
+
+  state.isRunning = true;
+  document.getElementById('test-btn').disabled = true;
+  startTimer();
+  setProgress(10);
+  setInfo('Suivi en cours…');
+
+  for (var poll = 1; poll <= MAX_POLLS; poll++) {
+    addLog('Poll #' + poll);
+    var url = POLL_BASE + '?video_id=' + encodeURIComponent(id) + '&model_name=' + encodeURIComponent(MODEL);
+    var r;
+    try {
+      r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + key } });
+    } catch (e) {
+      addLog('Erreur : ' + e.message, 'warn');
+      await sleep(POLL_INTERVAL_MS);
+      continue;
+    }
+    var d = await r.json();
+    var st = d.status || '?';
+    var pg = d.progress || 0;
+    addLog('Statut : ' + st + ' · ' + pg + '%');
+    var visual = 10 + (pg * 0.85);
+    if (visual > 95) visual = 95;
+    setProgress(visual);
+    setInfo('Statut : ' + st + ' · ' + pg + '%');
+
+    if (st === 'completed' || st === 'succeeded' || st === 'done') {
+      var u = (d.metadata && d.metadata.url) || d.url || (d.output && d.output.url);
+      if (u) {
+        setProgress(100);
+        setInfo('✅ Vidéo prête !', 'ok');
+        var v = document.getElementById('result-video');
+        v.src = u;
+        v.style.display = 'block';
+        v.load();
+      }
+      break;
+    }
+    if (st === 'failed' || st === 'error') {
+      addLog('Échec', 'err');
+      setInfo('Échec', 'err');
+      break;
+    }
+    await sleep(POLL_INTERVAL_MS);
+  }
+
+  stopTimer();
+  state.isRunning = false;
+  document.getElementById('test-btn').disabled = false;
+});
+
+document.getElementById('test-btn').addEventListener('click', generate);
+
+// ─── Init ────────────────────────────────────────────────
+updateUI();
+updateWakeUI();
+addLog('Prêt.');
+</script>
+</body>
+</html>
